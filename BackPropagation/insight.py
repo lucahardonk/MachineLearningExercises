@@ -2,6 +2,9 @@ import tensorflow as tf
 import matplotlib.pyplot as plt
 import numpy as np
 
+print(tf.__version__)
+print(tf.test.is_built_with_cuda()) 
+print("--------------------- software intormation")
 # Load the saved model
 model = tf.keras.models.load_model('my_handwritten_model')
 

@@ -1,47 +1,82 @@
 import os
 import cv2
 import numpy as np
-import matplotlib as plot
+import matplotlib.pyplot as plt
 import tensorflow as tf
+from tensorflow.keras.callbacks import Callback
+
+num_epochs = 5
+batch_size = 200
+
+class LossHistory(Callback):
+    def on_train_begin(self, logs={}):
+        self.losses = []
+        self.mean_losses = []
+
+    def on_batch_end(self, batch, logs={}):
+        self.losses.append(logs.get('loss'))
+        self.mean_losses.append(np.mean(self.losses))
+
+    
+
+# Create an instance of the custom callback
+loss_history = LossHistory()
 
 print("Num GPUs Available: ", len(tf.config.experimental.list_physical_devices('GPU')))
 
+mnist = tf.keras.datasets.mnist
+(x_train, y_train), (x_test, y_test) = mnist.load_data()
+x_train = tf.keras.utils.normalize(x_train, axis=1)
+x_test = tf.keras.utils.normalize(x_test, axis=1)
 
-mnist = tf.keras.datasets.mnist                             #prendo le immagini dei digit
-(x_train, y_train), (x_test, y_test) = mnist.load_data()    # divido il dataset in training data e validation data
-x_train  = tf.keras.utils.normalize(x_train, axis=1)        # normalizzo pixel gryscale 0-255 -> 0-1
-x_test  = tf.keras.utils.normalize(x_test, axis=1)          # = per x_test
-
-model = tf.keras.models.Sequential()                        # Sequential è una sequenza lineare di neuroni
-model.add(tf.keras.layers.Flatten(input_shape=(28,28)))     # aggiungo un livello lineare converterno una matrice 28*28 in 784 neuroni in riga
-model.add(tf.keras.layers.Dense(350, activation='relu'))    # classico collegamento dove ogni neurone è collegato a tutti i neuroni delle colonne che lo precedono e che lo susseguono
-                                                            # composto da 128 neuroni e definendo la funzione di attivazione di ogni neurone, in questo caso una relu
-model.add(tf.keras.layers.Dense(150, activation='relu'))    # ne immettiamo un altro livello uguale al precedente
-model.add(tf.keras.layers.Dense(10, activation='softmax'))  # output layer the che applica racoglie tutti i parametri della rete neurale e applica una softmax (10 essendo digits da 0 a 9)
-                                                            # in pratica mappa tutti i valori da 0 a 1 rislutando nella confidenza della preditione
+model = tf.keras.models.Sequential()
+model.add(tf.keras.layers.Flatten(input_shape=(28, 28)))
+model.add(tf.keras.layers.Dense(400, activation='relu'))
+model.add(tf.keras.layers.Dense(250, activation='relu'))
+model.add(tf.keras.layers.Dense(10, activation='softmax'))
 
 model.compile(optimizer=tf.keras.optimizers.SGD(learning_rate=0.21, momentum=0.9),
               loss=tf.keras.losses.SparseCategoricalCrossentropy(),
               metrics=['accuracy'])
 
-#model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
-'''
-Adam: Adam è un algoritmo di ottimizzazione che combina le tecniche di Momentum e RMSProp, 
-ed è comunemente usato per l'addestramento delle reti neurali perché è efficiente e spesso converge più velocemente rispetto ad altri ottimizzatori.
+try:
+    model.fit(x_train, y_train, batch_size=batch_size, epochs=num_epochs, callbacks=[loss_history])
+except KeyboardInterrupt:
+    print("Training interrupted by user.")
 
-sparse_categorical_crossentropy: Questo parametro specifica la funzione di perdita da utilizzare durante l'addestramento del modello.
-è una funzione di perdita comunemente usata per problemi di classificazione in cui le etichette sono rappresentate come interi (sparse) anziché codificate one-hot
+# Save the model
+model.save('my_handwritten_model')
 
-accuracy: Questo parametro specifica le metriche da monitorare durante l'addestramento e la valutazione del modello
-'''
-
-# train il modello
-model.fit(x_train, y_train, epochs=13) 
-
-# salvataggio the modello
-model.save('my_handwritten_model') 
-
-# valutazione del modello passandogli i dati riservati per il testing
+# Model evaluation using the reserved testing data
 loss, accuracy = model.evaluate(x_test, y_test)
 print(f"Test accuracy: {accuracy}\n")
 print(f"Test loss: {loss}")
+
+# Plot the loss after each batch
+plt.plot(loss_history.losses)
+plt.title('Loss after each batch')
+plt.ylabel('Loss')
+plt.xlabel('Batch')
+
+# Add vertical lines to separate epochs
+for i in range(1, num_epochs):
+    if i == num_epochs - 1:
+        plt.axvline(x=i * len(x_train) / batch_size, color='y', linestyle='--', linewidth=0.5, label='Epochs')
+    else:
+        plt.axvline(x=i * len(x_train) / batch_size, color='y', linestyle='--', linewidth=0.5)
+
+
+# Calculate mean loss for each epoch
+loss_per_epoch = np.mean(np.array_split(loss_history.mean_losses, len(loss_history.mean_losses) // (len(x_train) // batch_size)), axis=1)
+
+# Find the epoch index with the lowest mean loss
+min_mean_loss_epoch_index = np.argmin(loss_per_epoch)
+min_mean_loss_epoch = loss_per_epoch[min_mean_loss_epoch_index]
+
+print(f"Epoch with the lowest mean loss: Epoch {min_mean_loss_epoch_index + 1}, Mean Loss: {min_mean_loss_epoch}")
+
+# Add a horizontal line for the epoch with the lowest mean loss
+#plt.axhline(y=min_mean_loss_epoch, color='r', linestyle='--', linewidth=1, label=f'Lowest Mean Loss: {min_mean_loss_epoch:.4f}')
+plt.legend()
+
+plt.show()
